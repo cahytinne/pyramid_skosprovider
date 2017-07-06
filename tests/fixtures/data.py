@@ -16,10 +16,14 @@ larch = {
     'uri': 'http://python.com/trees/larch',
     'labels': [
         {'type': 'prefLabel', 'language': 'en', 'label': 'The Larch'},
-        {'type': 'prefLabel', 'language': 'nl', 'label': 'De Lariks'}
+        {'type': 'prefLabel', 'language': 'nl', 'label': 'De Lariks'},
+        {'type': 'sortLabel', 'language': 'nl', 'label': 'c'}
     ],
     'notes': [
         {'type': 'definition', 'language': 'en', 'note': 'A type of tree.'}
+    ],
+    'sources': [
+        {'citation': 'Monthy Python. Episode Three: How to recognise different types of trees from quite a long way away.'}
     ],
     'matches': {
         'close': ['http://id.python.org/different/types/of/trees/nr/1/the/larch']
@@ -31,7 +35,8 @@ chestnut = {
     'uri': 'http://python.com/trees/chestnut',
     'labels': [
         {'type': 'prefLabel', 'language': 'en', 'label': 'The Chestnut'},
-        {'type': 'altLabel', 'language': 'nl', 'label': 'De Paardekastanje'}
+        {'type': 'altLabel', 'language': 'nl', 'label': 'De Paardekastanje'},
+        {'type': 'sortLabel', 'language': 'nl', 'label': 'a'}
     ],
     'notes': [
         {
@@ -49,7 +54,8 @@ species = {
     'uri': 'http://python.com/trees/species',
     'labels': [
         {'type': 'prefLabel', 'language': 'en', 'label': 'Trees by species'},
-        {'type': 'prefLabel', 'language': 'nl', 'label': 'Bomen per soort'}
+        {'type': 'prefLabel', 'language': 'nl', 'label': 'Bomen per soort'},
+        {'type': 'prefLabel', 'language': 'nl', 'label': 'b'}
     ],
     'notes': [
         {

@@ -31,7 +31,7 @@ def get_skos_registry(registry):
 
     :rtype: :class:`skosprovider.registry.Registry`
     '''
-    #Argument might be a config or request
+    # Argument might be a config or request
     regis = getattr(registry, 'registry', None)
     if regis is None:
         regis = registry
@@ -47,8 +47,12 @@ def includeme(config):
     config.add_request_method(get_skos_registry, 'skos_registry', reify=True)
 
     config.add_route(
-        'skosprovider.uri',
+        'skosprovider.uri.deprecated',
         '/uris/{uri:.*}'
+    )
+    config.add_route(
+        'skosprovider.uri',
+        '/uris'
     )
     config.add_route(
         'skosprovider.cs',

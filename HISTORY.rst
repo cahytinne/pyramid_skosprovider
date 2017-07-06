@@ -1,4 +1,11 @@
-0.7.0 (2015-??-??)
+0.7.1 (2017-??-??)
+------------------
+
+- Return an HTTP 404 response when a conceptscheme could not be found. (#24)
+- Add universal wheel distribution. (#23)
+
+
+0.7.0 (2016-08-11)
 ------------------
 
 - Sort case insensitive when sorting by label. This is a BC break, although 
@@ -6,6 +13,17 @@
 - Add the markup attribute to Note json representations. This is a new addition
   to skosprovider 0.6.0 that allows marking that a note contains some markup
   (currently only HTML).
+- Looking for a certain URI is now done with a query parameter in stead of in
+  the path of a resource. So, `/uris/urn:x-skosprovider:trees` should now be
+  called as `/uris?uri=urn:x-skosprovider:trees`. The old way is deprecated. It
+  will still function under version `0.7.0`, but will be removed in a future
+  version. (#19)
+- Add support for the sources attribute, a new feature in skosprovider 0.6.0
+- Add support for languages to Conceptschemes, a new feature in skosprovider
+  0.6.0 that allows detailing what languages a conceptscheme uses.
+- Move JSON renderers to their own file and fix some language handling issues.
+  (#22)
+- Add support for Python 3.5
 
 0.6.0 (2015-03-02)
 ------------------

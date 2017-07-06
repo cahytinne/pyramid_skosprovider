@@ -5,16 +5,20 @@ This module contains the pyramid views that expose services.
 
 from __future__ import unicode_literals
 
+import itertools
+
 from pyramid.view import view_config, view_defaults
 
 from pyramid.compat import ascii_native_
 
 from pyramid.httpexceptions import (
-    HTTPNotFound
+    HTTPNotFound,
+    HTTPBadRequest
 )
 
 from pyramid_skosprovider.utils import (
-    parse_range_header
+    parse_range_header,
+    QueryBuilder
 )
 
 import logging
@@ -35,8 +39,11 @@ class ProviderView(RestView):
     '''
 
     @view_config(route_name='skosprovider.uri', request_method='GET')
+    @view_config(route_name='skosprovider.uri.deprecated', request_method='GET')
     def get_uri(self):
-        uri = self.request.matchdict['uri']
+        uri = self.request.params.get('uri', self.request.matchdict.get('uri', None))
+        if not uri:
+            return HTTPBadRequest()
         provider = self.skos_registry.get_provider(uri)
         if provider:
             return {
@@ -45,18 +52,17 @@ class ProviderView(RestView):
                 'id': provider.get_vocabulary_id()
             }
         c = self.skos_registry.get_by_uri(uri)
-        if c:
-            return {
-                'type': c.type,
-                'uri': c.uri,
-                'id': c.id,
-                'concept_scheme': {
-                    'uri': c.concept_scheme.uri,
-                    'id': self.skos_registry.get_provider(c.concept_scheme.uri).get_vocabulary_id()
-                }
-            }
         if not c:
             return HTTPNotFound()
+        return {
+            'type': c.type,
+            'uri': c.uri,
+            'id': c.id,
+            'concept_scheme': {
+                'uri': c.concept_scheme.uri,
+                'id': self.skos_registry.get_provider(c.concept_scheme.uri).get_vocabulary_id()
+            }
+        }
 
     @view_config(route_name='skosprovider.conceptschemes', request_method='GET')
     def get_conceptschemes(self):
@@ -83,7 +89,9 @@ class ProviderView(RestView):
             'label': provider.concept_scheme.label(language).label if provider.concept_scheme.label(language) else None,
             'subject': provider.metadata['subject'] if provider.metadata['subject'] else [],
             'labels': provider.concept_scheme.labels,
-            'notes': provider.concept_scheme.notes
+            'notes': provider.concept_scheme.notes,
+            'sources': provider.concept_scheme.sources,
+            'languages': provider.concept_scheme.languages
         }
 
     @view_config(route_name='skosprovider.conceptscheme.tc', request_method='GET')
@@ -104,49 +112,37 @@ class ProviderView(RestView):
         language = self.request.params.get('language', self.request.locale_name)
         return provider.get_top_display(language=language)
 
+    def _build_providers(self, request):
+        '''
+        :param pyramid.request.Request request:
+        :rtype: :class:`dict`
+        '''
+        # determine targets
+        providers = {}
+        ids = request.params.get('providers.ids', None)
+        if ids:
+            ids = ids.split(',')
+            providers['ids'] = ids
+        subject = self.request.params.get('providers.subject', None)
+        if subject:
+            providers['subject'] = subject
+        return providers
+
     @view_config(route_name='skosprovider.cs', request_method='GET')
     def get_concepts(self):
-        query = {}
-        mode = self.request.params.get('mode', 'default')
-        label = self.request.params.get('label', None)
-        postprocess = False
-        language = self.request.params.get('language', self.request.locale_name)
-        if mode == 'dijitFilteringSelect' and label == '':
+        qb = QueryBuilder(self.request)
+        query = qb()
+        kwargs = {"language": qb.language, "providers": self._build_providers(self.request)}
+        kwargs.update(self._get_sort_params())
+        if qb.no_result:
             concepts = []
         else:
-            if label not in [None, '*', '']:
-                if mode == 'dijitFilteringSelect' and '*' in label:
-                    postprocess = True
-                    query['label'] = label.replace('*', '')
-                else:
-                    query['label'] = label
-            type = self.request.params.get('type', None)
-            if type in ['concept', 'collection']:
-                query['type'] = type
-
-            # determine targets
-            providers = {}
-            ids = self.request.params.get('providers.ids', None)
-            if ids:
-                ids = ids.split(',')
-                providers['ids'] = ids
-            subject = self.request.params.get('providers.subject', None)
-            if subject:
-                providers['subject'] = subject
-            if not (ids or subject):
-                concepts = self.skos_registry.find(query, language=language)
-            else:
-                concepts = self.skos_registry.find(query, providers=providers, language=language)
+            concepts = self.skos_registry.find(query, **kwargs)
             # Flatten it all
-            cs = []
-            for c in concepts:
-                cs += c['concepts']
-            concepts = cs
+            concepts = list(itertools.chain.from_iterable([c['concepts'] for c in concepts]))
 
-        if postprocess:
-            concepts = self._postprocess_wildcards(concepts, label)
-
-        concepts = self._sort_concepts(concepts)
+        if qb.postprocess:
+            concepts = self._postprocess_wildcards(concepts, qb.label)
 
         return self._page_results(concepts)
 
@@ -156,32 +152,17 @@ class ProviderView(RestView):
         provider = self.skos_registry.get_provider(scheme_id)
         if not provider:
             return HTTPNotFound()
-        query = {}
-        mode = self.request.params.get('mode', 'default')
-        label = self.request.params.get('label', None)
-        postprocess = False
-        if mode == 'dijitFilteringSelect' and label == '':
+        qb = QueryBuilder(self.request)
+        query = qb()
+        kwargs = {"language": qb.language}
+        kwargs.update(self._get_sort_params())
+        if qb.no_result:
             concepts = []
         else:
-            if label not in [None, '*', '']:
-                if mode == 'dijitFilteringSelect' and '*' in label:
-                    postprocess = True
-                    query['label'] = label.replace('*', '')
-                else:
-                    query['label'] = label
-            type = self.request.params.get('type', None)
-            if type in ['concept', 'collection']:
-                query['type'] = type
-            coll = self.request.params.get('collection', None)
-            if coll is not None:
-                query['collection'] = {'id': coll, 'depth': 'all'}
-            language = self.request.params.get('language', self.request.locale_name)
-            concepts = provider.find(query, language=language)
+            concepts = provider.find(query, **kwargs)
 
-        if postprocess:
-            concepts = self._postprocess_wildcards(concepts, label)
-
-        concepts = self._sort_concepts(concepts)
+        if qb.postprocess:
+            concepts = self._postprocess_wildcards(concepts, qb.label)
 
         return self._page_results(concepts)
 
@@ -195,19 +176,15 @@ class ProviderView(RestView):
             concepts = [c for c in concepts if c['label'].endswith(label[1:])]
         return concepts
 
-    def _sort_concepts(self, concepts):
+    def _get_sort_params(self):
         sort = self.request.params.get('sort', None)
-        #Result sorting
+        # Result sorting
         if sort:
-            sort_desc = (sort[0:1] == '-')
+            sort_order = 'desc' if sort[0:1] == '-' else 'asc'
             sort = sort[1:] if sort[0:1] in ['-', '+'] else sort
-            sort = sort.strip() # dojo store does not encode '+'
-            if (len(concepts) > 0) and (sort in concepts[0]):
-                if sort == 'label':
-                    concepts.sort(key=lambda concept: concept[sort].lower(), reverse=sort_desc)
-                else:
-                    concepts.sort(key=lambda concept: concept[sort], reverse=sort_desc)
-        return concepts
+            sort = sort.strip().lower()  # dojo store does not encode '+'
+            return {"sort": sort, "sort_order": sort_order}
+        return {}
 
     def _page_results(self, concepts):
         # Result paging
@@ -233,6 +210,8 @@ class ProviderView(RestView):
         scheme_id = self.request.matchdict['scheme_id']
         concept_id = self.request.matchdict['c_id']
         provider = self.skos_registry.get_provider(scheme_id)
+        if not provider:
+            return HTTPNotFound()
         concept = provider.get_by_id(concept_id)
         if not concept:
             return HTTPNotFound()
@@ -243,9 +222,11 @@ class ProviderView(RestView):
         scheme_id = self.request.matchdict['scheme_id']
         concept_id = self.request.matchdict['c_id']
         provider = self.skos_registry.get_provider(scheme_id)
+        if not provider:
+            return HTTPNotFound()
         language = self.request.params.get('language', self.request.locale_name)
         children = provider.get_children_display(concept_id, language=language)
-        if children == False:
+        if children is False:
             return HTTPNotFound()
         return children
 
@@ -254,7 +235,9 @@ class ProviderView(RestView):
         scheme_id = self.request.matchdict['scheme_id']
         concept_id = self.request.matchdict['c_id']
         provider = self.skos_registry.get_provider(scheme_id)
+        if not provider:
+            return HTTPNotFound()
         expanded = provider.expand(concept_id)
-        if expanded == False:
+        if not expanded:
             return HTTPNotFound()
         return expanded
